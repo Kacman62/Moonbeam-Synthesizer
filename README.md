@@ -71,6 +71,10 @@ https://blueprint.hackclub.com/projects/928
 
 Huge thanks to Hack Club and the Blueprint program for assisting in this project. I have now received funding for the project and will be ordering parts. Expect future updates at the start of December
 
+# Update 11/25
+
+Boards have been received. Still waiting on LCSC order. Small errors have been found in the board and have been fixed in the PCB files
+
 # Known issues
 In settings, the note played is incorrect (going to wait for boards to arrive so I can assign keys different notes)
 
@@ -78,4 +82,9 @@ In Wave changer, the picture of the sawtooth wave is reversed from what is seen 
 
 In Wave Viewer, the wave slides around randomly. (The wave is still representative of what the audio out looks like, it's just hard to focus on it)
 
+Board:
+
+Slide pot pin spacing 2.00mm instead of 2.54mm FIXED 11/25/25
+
+Resistor footprint 7.62mm instead of 12.04mm FIXED 11/25/25
 
