@@ -75,6 +75,11 @@ Huge thanks to Hack Club and the Blueprint program for assisting in this project
 
 Boards have been received. Still waiting on LCSC order. Small errors have been found in the board and have been fixed in the PCB files
 
+# Update 12/1
+
+Boards have been assembled and multiple errors have been found. The files will still be up, but assume they do not work.
+Nothing shorts together, but both the button matrix is broken, as well as the I2S DAC and amplifier not working.
+
 # Known issues
 In settings, the note played is incorrect (going to wait for boards to arrive so I can assign keys different notes)
 
