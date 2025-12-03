@@ -85,11 +85,16 @@ Nothing shorts together, but both the button matrix is broken, as well as the I2
 After reflowing the baord, the issue has been fixed. Two of the data lines into the DAC were shorted and after fixing that, it makes sound. The code still has some issues, but they are being fixed rapidly and the current board is almost done.
 
 # Known issues
+
+Code: 
+
 In settings, the note played is incorrect (going to wait for boards to arrive so I can assign keys different notes)
 
 In Wave changer, the picture of the sawtooth wave is reversed from what is seen in the wave viewer
 
 In Wave Viewer, the wave slides around randomly. (The wave is still representative of what the audio out looks like, it's just hard to focus on it)
+
+Button scanning matrix is incorrect, every button plays the same 5 notes FIXED 12/3/25
 
 Board:
 
