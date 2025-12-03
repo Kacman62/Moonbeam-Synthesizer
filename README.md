@@ -80,6 +80,10 @@ Boards have been received. Still waiting on LCSC order. Small errors have been f
 Boards have been assembled and multiple errors have been found. The files will still be up, but assume they do not work.
 Nothing shorts together, but both the button matrix is broken, as well as the I2S DAC and amplifier not working.
 
+# Update 12/3
+
+After reflowing the baord, the issue has been fixed. Two of the data lines into the DAC were shorted and after fixing that, it makes sound. The code still has some issues, but they are being fixed rapidly and the current board is almost done.
+
 # Known issues
 In settings, the note played is incorrect (going to wait for boards to arrive so I can assign keys different notes)
 
