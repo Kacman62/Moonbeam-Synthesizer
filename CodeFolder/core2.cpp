@@ -1,5 +1,5 @@
-//
-//*********** CORE 2 AREA **************/
+// Lets find the memory leak
+
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_gfx.h>
 #include <EEncoder.h>
