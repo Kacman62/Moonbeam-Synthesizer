@@ -84,6 +84,10 @@ Nothing shorts together, but both the button matrix is broken, as well as the I2
 
 After reflowing the baord, the issue has been fixed. Two of the data lines into the DAC were shorted and after fixing that, it makes sound. The code still has some issues, but they are being fixed rapidly and the current board is almost done.
 
+# Update 12/4 
+
+This project is now shipped. I had a lot of fun working on this, and will continue to update the software, but for now the project is in a working state so expect less updates.
+
 # Known issues
 
 Code: 
