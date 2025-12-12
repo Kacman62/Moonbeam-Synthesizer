@@ -14,7 +14,8 @@ A standalone DAWLESS synthesizer based on a Raspberry Pi Pico. Includes a custom
 - Custom ADSR editing
 - Oscilloscope style waveform viewer
 - Toggleable speaker and headphone out
-- And more planned features for the future!
+- Audio effects and filters
+- Preset sound fforms
 
 # Initial Idea
 After reading the guide from Hack club and others online to make a MIDI keyboard, it seemed like a great idea. After more research though I wanted a standalone synthesizer that does not need a computer and couldn't find many examples online. This seemed like it would be easy enough so I decided to do it myself
@@ -88,17 +89,25 @@ After reflowing the baord, the issue has been fixed. Two of the data lines into 
 
 This project is now shipped. I had a lot of fun working on this, and will continue to update the software, but for now the project is in a working state so expect less updates.
 
+# Update 12/12 
+
+Version 1 of software is now released. This features upgrades to all parts of the code base. Numerous bug fixes, rewritten audio workflow. Support for filters, effects, and presets. Improved menus and clarity. 
+
 # Known issues
 
 Code: 
 
-In settings, the note played is incorrect (going to wait for boards to arrive so I can assign keys different notes)
+In settings, the note played is incorrect (going to wait for boards to arrive so I can assign keys different notes) Fixed 12/12/25
+
+Button scanning matrix is incorrect, every button plays the same 5 notes FIXED 12/3/25
+
+
 
 In Wave changer, the picture of the sawtooth wave is reversed from what is seen in the wave viewer
 
 In Wave Viewer, the wave slides around randomly. (The wave is still representative of what the audio out looks like, it's just hard to focus on it)
 
-Button scanning matrix is incorrect, every button plays the same 5 notes FIXED 12/3/25
+Distortion effect is unstable and clips audio most of the time. Still able to be used in code, but not recomended
 
 Board:
 
