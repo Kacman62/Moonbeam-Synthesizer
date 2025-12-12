@@ -13,26 +13,21 @@
 #define MOZZI_CONTROL_RATE 128 // mozzi rate for updateControl()
 #include "Mozzi.h"             // *after* all configuration options, include the main Mozzi headers
 
-#include <Oscil.h>
-#include <ADSR.h>
+#include "main.h"
+#include "settings.h"
+#include "filters.h"
 
-#include <tables/sin2048_int8.h>
-#include <tables/saw2048_int8.h>
-#include <tables/square_no_alias_2048_int8.h>
-#include <tables/saw2048_int8.h>
-#include <tables/square_no_alias_2048_int8.h>
-#include <tables/triangle2048_int8.h>
+MultiResonantFilter<uint16_t> mf;
 
-#define VOL_POT A0   // GP26
-#define PITCH_POT A1 // GP27
-#define VIB_POT A2   // GP28
-#define VOL_POT A0   // GP26
-#define PITCH_POT A1 // GP27
-#define VIB_POT A2   // GP28
+#define VOL_POT A0
+#define PITCH_POT A1
+#define VIB_POT A2
 
 volatile float masterVol = 1.0f;
 volatile float pitchOffset = 1.0f;
 volatile float vibDepth = 1.0f;
+
+float GAIN = 20.0f;
 
 #define NUM_COLS 5
 #define NUM_ROWS 5
@@ -44,12 +39,20 @@ Oscil<SIN2048_NUM_CELLS, AUDIO_RATE> osc[NUM_VOICES] = {
     Oscil<SIN2048_NUM_CELLS, AUDIO_RATE>(SIN2048_DATA),
     Oscil<SIN2048_NUM_CELLS, AUDIO_RATE>(SIN2048_DATA)};
 
-ADSR<CONTROL_RATE, AUDIO_RATE> env[NUM_VOICES];
+ADSR<CONTROL_RATE, AUDIO_RATE> env[NUM_VOICES] = {
+    ADSR<MOZZI_CONTROL_RATE, MOZZI_AUDIO_RATE>(), // if audio is slow chane mAudioRate to mControlRate
+    ADSR<MOZZI_CONTROL_RATE, MOZZI_AUDIO_RATE>(),
+    ADSR<MOZZI_CONTROL_RATE, MOZZI_AUDIO_RATE>(),
+    ADSR<MOZZI_CONTROL_RATE, MOZZI_AUDIO_RATE>(),
+    ADSR<MOZZI_CONTROL_RATE, MOZZI_AUDIO_RATE>()};
 
 volatile SharedADSR adsrSettings;
 
 volatile bool ADSR_FLAG = false;
 volatile bool OSC_FLAG = false;
+volatile bool LFO_FLAG = false;
+
+volatile float LFO_FREQ = 5.0f;
 
 volatile OSCState wave = SIN;
 
@@ -60,13 +63,17 @@ extern const unsigned char squareWave[];
 extern const unsigned char *waveTable[];
 extern const unsigned char *waveTable[];
 
-Oscil<SIN2048_NUM_CELLS, AUDIO_RATE> lfo(SIN2048_DATA); // LFO for vibrato
+extern volatile float userOctaveOffset;
+
+Oscil<SIN2048_NUM_CELLS, MOZZI_CONTROL_RATE> lfo(SIN2048_DATA); // LFO for vibrato
+Oscil<SIN2048_NUM_CELLS, AUDIO_RATE> subOsc(SQUARE_NO_ALIAS_2048_DATA);
 
 int ButtonMatrixRow[NUM_ROWS] = {4, 5, 6, 7, 8};
 int ButtonMatrixCol[NUM_COLS] = {9, 10, 11, 12, 13};
 
-float notePlayArray[NUM_VOICES] = {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f};
-int notePlayButtons[NUM_VOICES] = {-1, -1, -1, -1, -1};
+float notePlayArray[NUM_VOICES];
+int notePlayButtons[NUM_VOICES];
+bool releaseFlag[NUM_VOICES];
 
 float noteFreqs[NUM_ROWS * NUM_COLS] = {
     /*261.63, 277.18, 293.66, 311.13, 329.63,
@@ -81,17 +88,9 @@ float noteFreqs[NUM_ROWS * NUM_COLS] = {
     830.61, 880.00, 932.33, 987.77, 1046.5}; // C4-C6
                                              // Nomalized to my weird button layout
 
-void updateADSR();
-void updateOSC();
-void scanMatrix();
-int getFreeVoice();
-int isButtonPlaying(int button);
-
 void setup()
 {
 
-  // Blink LED so i know its working (ONLY FOR DEBUGGING)
-  // Blink LED so i know its working (ONLY FOR DEBUGGING)
   pinMode(0, OUTPUT);
   digitalWrite(0, HIGH);
   delay(500);
@@ -100,8 +99,9 @@ void setup()
 
   updateADSR();
   updateOSC();
+  updateLFO();
 
-  lfo.setFreq(5.0f);
+  lfo.setFreq(LFO_FREQ);
 
   digitalWrite(0, HIGH);
   delay(500);
@@ -123,6 +123,13 @@ void setup()
     pinMode(ButtonMatrixCol[c], INPUT_PULLDOWN);
   }
 
+  for (int i = 0; i < NUM_VOICES; i++)
+  {
+    notePlayArray[i] = -1.0f;
+    notePlayButtons[i] = -1;
+    releaseFlag[i] = false;
+  }
+
   analogReadResolution(12); // 0–4095
 
   startMozzi();
@@ -132,6 +139,20 @@ const int WAVEFORM_SAMPLES = 128;
 volatile int16_t waveformBuffer[WAVEFORM_SAMPLES];
 volatile int waveformIndex = 0;
 
+void writeSample(int16_t sample)
+{
+  waveformBuffer[waveformIndex] = sample;
+  waveformIndex = (waveformIndex + 1) % WAVEFORM_SAMPLES;
+}
+
+float lpfState = 0;
+
+inline int16_t lowpass(int16_t input)
+{
+  lpfState += 0.1f * (input - lpfState); // 0.05–0.3 = cutoff
+  return (int16_t)lpfState;
+}
+
 AudioOutput updateAudio()
 {
   int32_t mix = 0;
@@ -139,28 +160,32 @@ AudioOutput updateAudio()
   // must loop through every voice, because no voice stealing or auto adjust voice positions
   for (int i = 0; i < NUM_VOICES; i++)
   {
-    if (notePlayButtons[i] < 0)
+    if (notePlayButtons[i] < 0 && releaseFlag[i] == false)
     {
       continue;
     }
+    auto envelopeLevel = env[i].next();
+
+    if (envelopeLevel == 0)
+    {
+      releaseFlag[i] = false;
+      continue;
+    }
+
     int32_t oscSample = osc[i].next();
-    mix += (int)((oscSample * env[i].next() / 255.0f));
+    mix += (int)((oscSample * envelopeLevel) / 255.0f);
   }
+
+  mix = applyEffects(mix);
 
   mix = (mix * masterVol);
 
-  int GAIN = 30;
-
-  mix *= GAIN;
-
-  // Clamp after applying gain
   if (mix > 32767)
     mix = 32767;
   if (mix < -32768)
     mix = -32768;
 
-  /* waveformBuffer[waveformIndex] = mix; // hope this doesnt cause to much overhead. may need to move to update control loop
-   waveformIndex = (waveformIndex + 1) % WAVEFORM_SAMPLES; */
+  writeSample((int16_t)mix);
 
   return StereoOutput::from16Bit((int16_t)mix, (int16_t)mix);
 }
@@ -174,9 +199,11 @@ void updateControl()
 {
   masterVol = analogRead(VOL_POT) / 4095.0;
 
-  float rawSemis = (analogRead(PITCH_POT) / 4095.0f) * 24.0f - 12.0f;
+  float rawSemis = (analogRead(PITCH_POT) / 4095.0f) * 24.0f + (12.0f * userOctaveOffset);
   pitchOffset = roundf(rawSemis);
   float pitchShift = powf(2.0f, pitchOffset / 12.0f);
+
+  vibDepth = analogRead(VIB_POT) / 4095.0f;
 
   if (ADSR_FLAG)
   {
@@ -187,9 +214,10 @@ void updateControl()
   {
     updateOSC();
   }
-  if (OSC_FLAG)
+
+  if (LFO_FLAG)
   {
-    updateOSC();
+    updateLFO();
   }
 
   scanMatrix();
@@ -197,15 +225,28 @@ void updateControl()
   for (int i = 0; i < NUM_VOICES; i++)
   {
     if (notePlayArray[i] < 0)
-      continue; // ignore inactive voices
+      continue;
+
+    env[i].update();
 
     float baseFreq = notePlayArray[i];
 
-    // final frequency for this voice
-    float finalFreq = baseFreq * pitchShift;
+    float lfoValue = lfo.next() / 128.0f;
+
+    float reducedVibDepth = vibDepth / 4;
+
+    float vibratoFactor = powf(2.0f, (lfoValue * reducedVibDepth) / 12.0f);
+
+    // Apply pitch shift and vibrato
+    float finalFreq = baseFreq * pitchShift * vibratoFactor;
 
     osc[i].setFreq(finalFreq);
   }
+
+  float cutoff = 180.0f;
+  float resonance = 200.0f;
+
+  mf.setCutoffFreqAndResonance(cutoff, resonance);
 }
 
 void scanMatrix()
@@ -233,60 +274,14 @@ void scanMatrix()
         env[freeVoice].noteOn();
 
         osc[freeVoice].setFreq(notePlayArray[freeVoice]);
-        /*
-                Serial.print("Button pressed "); // remove later to speed up audio
-                Serial.println(currentButton);
-                Serial.print("Button Playing ");
-                Serial.println(buttonPlaying);
-
-                Serial.print("Assigned voice ");
-                Serial.println(freeVoice);
-                Serial.print("notePlayButtons: ");
-                for (int _i = 0; _i < NUM_VOICES; _i++)
-                {
-                  Serial.print(notePlayButtons[_i]);
-                  Serial.print(",");
-                }
-                Serial.println();
-
-                Serial.print("notePlayArray: ");
-                for (int _i = 0; _i < NUM_VOICES; _i++)
-                {
-                  Serial.print(notePlayArray[_i]);
-                  Serial.print(",");
-                }
-                Serial.println(); */
       }
 
       if (state == LOW && buttonPlaying > -1)
       {
         notePlayArray[buttonPlaying] = -1.0f;
         notePlayButtons[buttonPlaying] = -1;
-        env[freeVoice].noteOff();
-
-        /*
-                Serial.print("Button released "); // remove later to speed up audio
-                Serial.println(currentButton);
-                Serial.print("Button Playing ");
-                Serial.println(buttonPlaying);
-
-                Serial.print("Released voice ");
-                Serial.println(buttonPlaying);
-                Serial.print("notePlayButtons: ");
-                for (int _i = 0; _i < NUM_VOICES; _i++)
-                {
-                  Serial.print(notePlayButtons[_i]);
-                  Serial.print(",");
-                }
-                Serial.println();
-
-                Serial.print("notePlayArray: ");
-                for (int _i = 0; _i < NUM_VOICES; _i++)
-                {
-                  Serial.print(notePlayArray[_i]);
-                  Serial.print(",");
-                }
-                Serial.println(); */
+        env[buttonPlaying].noteOff();
+        releaseFlag[buttonPlaying] = true;
       }
 
       pinMode(ButtonMatrixCol[c], INPUT_PULLDOWN);
@@ -339,20 +334,36 @@ void updateOSC()
 
     case SIN:
       osc[i].setTable(SIN2048_DATA);
+      setGain(20);
       break;
 
     case TRIANGLE:
       osc[i].setTable(TRIANGLE2048_DATA);
+      setGain(20);
       break;
 
     case SAW:
       osc[i].setTable(SAW2048_DATA);
+      setGain(20);
       break;
 
     case SQUARE:
       osc[i].setTable(SQUARE_NO_ALIAS_2048_DATA);
+      setGain(20);
       break;
     }
   }
   OSC_FLAG = false;
+}
+
+void updateLFO()
+{
+
+  lfo.setFreq(LFO_FREQ);
+  LFO_FLAG = false;
+}
+
+void setGain(int amount)
+{
+  GAIN = amount;
 }
